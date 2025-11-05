@@ -121,6 +121,7 @@ export function Avatar(props) {
   const currentAudioRef = useRef(null); // Referencia al audio actual para poder detenerlo
   const isPlayingRef = useRef(false); // Ref para saber si hay un audio reproduciéndose (no causa re-renders)
   const processingMessageRef = useRef(null); // Ref para rastrear qué mensaje se está procesando
+  const [audioCompleted, setAudioCompleted] = useState(0); // Estado para forzar re-render cuando termine el audio
 
   // Mejorar calidad de materiales y texturas
   useEffect(() => {
@@ -172,7 +173,7 @@ export function Avatar(props) {
   };
 
   useEffect(() => {
-    console.log(message);
+    console.log('📨 useEffect ejecutado - mensaje:', message ? `"${message.text?.substring(0, 50)}..."` : 'null', '| audioCompleted:', audioCompleted);
     if (!message) {
       setAnimation("Idle");
       // Detener cualquier audio que esté reproduciéndose
@@ -186,19 +187,26 @@ export function Avatar(props) {
       return;
     }
     
+    // Crear un identificador único para el mensaje (usar audio como ID único)
+    const messageId = message.audio ? message.audio.substring(0, 50) : JSON.stringify(message);
+    
     // Si ya estamos procesando este mismo mensaje, no hacer nada
-    if (processingMessageRef.current === message) {
+    if (processingMessageRef.current === messageId) {
+      console.log('⚠️ Ya se está procesando este mensaje (por ID), ignorando...');
       return;
     }
     
     // Si ya hay un audio reproduciéndose, esperar a que termine
     if (isPlayingRef.current && currentAudioRef.current) {
-      console.log('Esperando a que termine el audio anterior...');
+      console.log('⏳ Esperando a que termine el audio anterior...');
+      // NO usar setInterval aquí - el audio.onended ya manejará el siguiente mensaje
+      // Simplemente retornar y esperar a que onMessagePlayed() se ejecute
       return; // No hacer nada hasta que termine el audio actual
     }
     
-    // Marcar que estamos procesando este mensaje
-    processingMessageRef.current = message;
+    // Marcar que estamos procesando este mensaje (usar ID en lugar de objeto)
+    processingMessageRef.current = messageId;
+    console.log(`🎬 Iniciando reproducción del mensaje: ${messageId.substring(0, 30)}...`);
     
     setAnimation(message.animation);
     setFacialExpression(message.facialExpression);
@@ -323,11 +331,12 @@ export function Avatar(props) {
           
           audio.onended = () => {
             console.log('🎵 Audio terminado, limpiando referencias...');
+            console.log(`✅ Mensaje completado: ${messageId.substring(0, 30)}...`);
             
             // Limpiar referencias ANTES de avanzar
             currentAudioRef.current = null;
             isPlayingRef.current = false;
-            processingMessageRef.current = null;
+            processingMessageRef.current = null; // Limpiar ID del mensaje procesado
             
             // NO revocar Blob URL inmediatamente en mobile (puede causar problemas)
             // Esperar un poco más antes de limpiar para evitar cortes
@@ -349,16 +358,18 @@ export function Avatar(props) {
             setTimeout(() => {
               // Avanzar al siguiente mensaje
               console.log('➡️ Avanzando al siguiente mensaje...');
+              setAudioCompleted(prev => prev + 1); // Forzar re-render
               onMessagePlayed();
             }, advanceDelay);
           };
           
           // Manejar errores durante la reproducción
           audio.onerror = (error) => {
-            console.error('Error en audio durante reproducción:', error);
+            console.error('❌ Error en audio durante reproducción:', error);
+            console.error(`Mensaje fallido: ${messageId.substring(0, 30)}...`);
             currentAudioRef.current = null;
             isPlayingRef.current = false;
-            processingMessageRef.current = null;
+            processingMessageRef.current = null; // Limpiar ID del mensaje procesado
             
             const cleanupDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 500 : 200;
             setTimeout(() => {
@@ -374,6 +385,7 @@ export function Avatar(props) {
             const advanceDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 300 : 100;
             setTimeout(() => {
               console.log('➡️ Avanzando al siguiente mensaje (error)...');
+              setAudioCompleted(prev => prev + 1);
               onMessagePlayed();
             }, advanceDelay);
           };
@@ -437,6 +449,7 @@ export function Avatar(props) {
                 const advanceDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 300 : 100;
                 setTimeout(() => {
                   console.log('➡️ Avanzando al siguiente mensaje (retry)...');
+                  setAudioCompleted(prev => prev + 1);
                   onMessagePlayed();
                 }, advanceDelay);
               };
@@ -452,6 +465,7 @@ export function Avatar(props) {
               setTimeout(() => {
                 console.log('➡️ Avanzando al siguiente mensaje (timeout)...');
                 processingMessageRef.current = null;
+                setAudioCompleted(prev => prev + 1);
                 onMessagePlayed();
               }, estimatedDuration * 1000);
             }
@@ -488,6 +502,7 @@ export function Avatar(props) {
             const advanceDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 300 : 100;
             setTimeout(() => {
               console.log('➡️ Avanzando al siguiente mensaje (fallback)...');
+              setAudioCompleted(prev => prev + 1);
               onMessagePlayed();
             }, advanceDelay);
           };
@@ -500,6 +515,7 @@ export function Avatar(props) {
           setTimeout(() => {
             console.log('➡️ Avanzando al siguiente mensaje (sin audio)...');
             processingMessageRef.current = null;
+            setAudioCompleted(prev => prev + 1);
             onMessagePlayed();
           }, 3000);
         }
@@ -507,7 +523,7 @@ export function Avatar(props) {
     };
     
     playAudio();
-  }, [message, onMessagePlayed]); // Solo ejecutar cuando message cambia
+  }, [message, onMessagePlayed, audioCompleted]); // Ejecutar cuando message cambia o audio se completa
 
   const { animations } = useGLTF("/models/animations.glb");
 
