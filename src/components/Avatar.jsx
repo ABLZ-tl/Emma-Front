@@ -118,6 +118,8 @@ export function Avatar(props) {
 
   const [lipsync, setLipsync] = useState();
   const audioContextRef = useRef(null);
+  const currentAudioRef = useRef(null); // Referencia al audio actual para poder detenerlo
+  const [isPlaying, setIsPlaying] = useState(false); // Estado para saber si hay un audio reproduciéndose
 
   // Mejorar calidad de materiales y texturas
   useEffect(() => {
@@ -172,13 +174,35 @@ export function Avatar(props) {
     console.log(message);
     if (!message) {
       setAnimation("Idle");
+      // Detener cualquier audio que esté reproduciéndose
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
+        setIsPlaying(false);
+      }
       return;
     }
+    
+    // Si ya hay un audio reproduciéndose, esperar a que termine
+    if (isPlaying && currentAudioRef.current) {
+      console.log('Esperando a que termine el audio anterior...');
+      return; // No hacer nada hasta que termine el audio actual
+    }
+    
     setAnimation(message.animation);
     setFacialExpression(message.facialExpression);
     setLipsync(message.lipsync);
     
     const playAudio = async () => {
+      // Detener cualquier audio anterior que pueda estar reproduciéndose
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
+      }
+      
+      setIsPlaying(true);
       // Inicializar contexto de audio si es necesario (para iOS)
       await initializeAudioContext();
       
@@ -250,15 +274,22 @@ export function Avatar(props) {
           }
           
           setAudio(audio);
+          currentAudioRef.current = audio; // Guardar referencia
+          
           audio.onended = () => {
             if (audioBlob) URL.revokeObjectURL(audioUrl); // Limpiar Blob URL solo si es Blob
-            onMessagePlayed();
+            currentAudioRef.current = null;
+            setIsPlaying(false);
+            onMessagePlayed(); // Esto activará el siguiente mensaje
           };
           
           // Manejar errores durante la reproducción
           audio.onerror = (error) => {
             console.error('Error en audio durante reproducción:', error);
             if (audioBlob) URL.revokeObjectURL(audioUrl); // Limpiar Blob URL solo si es Blob
+            currentAudioRef.current = null;
+            setIsPlaying(false);
+            onMessagePlayed(); // Avanzar al siguiente mensaje aunque haya error
           };
           
         } catch (error) {
@@ -299,14 +330,19 @@ export function Avatar(props) {
                 await playPromise;
               }
               setAudio(retryAudio);
+              currentAudioRef.current = retryAudio; // Guardar referencia
               retryAudio.onended = () => {
                 if (audioBlob) URL.revokeObjectURL(retryAudioUrl);
+                currentAudioRef.current = null;
+                setIsPlaying(false);
                 onMessagePlayed();
               };
             } catch (retryError) {
               console.error('Error en segundo intento de reproducir audio:', retryError);
               // Aún así, continuar con la animación aunque el audio no se reproduzca
               setAudio(audio);
+              currentAudioRef.current = null;
+              setIsPlaying(false);
               // Simular que el audio terminó para avanzar (usar duración real si está disponible)
               const estimatedDuration = audio.duration || 3;
               setTimeout(() => {
@@ -336,9 +372,16 @@ export function Avatar(props) {
           
           await fallbackAudio.play();
           setAudio(fallbackAudio);
-          fallbackAudio.onended = onMessagePlayed;
+          currentAudioRef.current = fallbackAudio; // Guardar referencia
+          fallbackAudio.onended = () => {
+            currentAudioRef.current = null;
+            setIsPlaying(false);
+            onMessagePlayed();
+          };
         } catch (fallbackError) {
           console.error('Error en fallback de audio:', fallbackError);
+          currentAudioRef.current = null;
+          setIsPlaying(false);
           // Continuar sin audio
           setTimeout(() => {
             onMessagePlayed();
@@ -348,7 +391,7 @@ export function Avatar(props) {
     };
     
     playAudio();
-  }, [message, onMessagePlayed]);
+  }, [message, onMessagePlayed, isPlaying]); // Incluir isPlaying en las dependencias
 
   const { animations } = useGLTF("/models/animations.glb");
 
