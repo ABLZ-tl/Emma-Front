@@ -20,25 +20,34 @@ export const UI = ({ hidden, arMode, setArMode, ...props }) => {
   const [audioStream, setAudioStream] = useState(null);
 
   // Inicializar contexto de audio en la primera interacción (importante para iOS)
-  const initializeAudioOnFirstInteraction = () => {
+  const initializeAudioOnFirstInteraction = async () => {
     if (!window.audioContextInitialized) {
-      const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
-      silentAudio.volume = 0.01;
-      silentAudio.setAttribute('playsinline', 'true');
-      silentAudio.setAttribute('webkit-playsinline', 'true');
-      silentAudio.play().then(() => {
+      try {
+        // Crear un audio silencioso para activar el contexto
+        const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
+        silentAudio.volume = 0.01;
+        silentAudio.setAttribute('playsinline', 'true');
+        silentAudio.setAttribute('webkit-playsinline', 'true');
+        
+        // Intentar reproducir y pausar inmediatamente
+        await silentAudio.play();
         silentAudio.pause();
+        silentAudio.currentTime = 0;
+        
         window.audioContextInitialized = true;
-      }).catch(() => {
-        // Ignorar errores
-      });
+        console.log('Contexto de audio inicializado para iOS');
+      } catch (error) {
+        console.warn('No se pudo inicializar contexto de audio:', error);
+        // Marcar como inicializado de todos modos para evitar reintentos infinitos
+        window.audioContextInitialized = true;
+      }
     }
   };
 
   const sendMessage = async (text) => {
     if (!loading && !message && text) {
       // Inicializar audio en la primera interacción (importante para iOS)
-      initializeAudioOnFirstInteraction();
+      await initializeAudioOnFirstInteraction();
       
       await chat(text);
       if (input.current) {
@@ -60,7 +69,7 @@ export const UI = ({ hidden, arMode, setArMode, ...props }) => {
       stopRecording();
     } else {
       // Inicializar audio en la primera interacción (importante para iOS)
-      initializeAudioOnFirstInteraction();
+      await initializeAudioOnFirstInteraction();
       
       // Iniciar grabación
       await startRecording();

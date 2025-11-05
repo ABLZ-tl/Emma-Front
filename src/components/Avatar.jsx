@@ -180,81 +180,168 @@ export function Avatar(props) {
       // Inicializar contexto de audio si es necesario (para iOS)
       await initializeAudioContext();
       
-      // Crear el elemento de audio
-      const audio = new Audio("data:audio/mp3;base64," + message.audio);
-      
-      // Configuraciones críticas para iOS
-      audio.setAttribute('playsinline', 'true');
-      audio.setAttribute('webkit-playsinline', 'true');
-      audio.setAttribute('preload', 'auto');
-      audio.crossOrigin = 'anonymous';
-      
-      // Configurar volumen
-      audio.volume = 1.0;
-      
-      // Para iOS: asegurar que el audio se carga antes de reproducir
-      audio.load();
-      
-      // Esperar a que el audio esté listo (especialmente importante para iOS)
-      await new Promise((resolve) => {
-        if (audio.readyState >= 2) {
-          // HAVE_CURRENT_DATA o superior
-          resolve();
-        } else {
-          audio.addEventListener('canplaythrough', () => resolve(), { once: true });
-          audio.addEventListener('error', () => resolve(), { once: true }); // Resolver incluso si hay error
-        }
-      });
-      
-      // Intentar reproducir el audio
+      // Convertir base64 a Blob (mejor soporte en iOS que data URIs)
+      let audioBlob;
       try {
-        const playPromise = audio.play();
-        
-        // Manejar la promesa de play
-        if (playPromise !== undefined) {
-          await playPromise;
+        const audioData = atob(message.audio);
+        const audioArray = new Uint8Array(audioData.length);
+        for (let i = 0; i < audioData.length; i++) {
+          audioArray[i] = audioData.charCodeAt(i);
         }
+        audioBlob = new Blob([audioArray], { type: 'audio/mpeg' });
+      } catch (decodeError) {
+        console.error('Error decodificando base64:', decodeError);
+        // Fallback a data URI
+        audioBlob = null;
+      }
+      
+      try {
+        // Usar Blob URL si está disponible, sino usar data URI
+        const audioUrl = audioBlob 
+          ? URL.createObjectURL(audioBlob)
+          : "data:audio/mp3;base64," + message.audio;
         
-        setAudio(audio);
-        audio.onended = () => {
-          onMessagePlayed();
-        };
+        // Crear el elemento de audio usando Blob URL (mejor para iOS)
+        const audio = new Audio(audioUrl);
         
-        // Manejar errores durante la reproducción
-        audio.onerror = (error) => {
-          console.error('Error en audio durante reproducción:', error);
-        };
+        // Configuraciones críticas para iOS
+        audio.setAttribute('playsinline', 'true');
+        audio.setAttribute('webkit-playsinline', 'true');
+        audio.setAttribute('preload', 'auto');
+        audio.crossOrigin = 'anonymous';
         
-      } catch (error) {
-        console.error('Error reproduciendo audio:', error);
-        console.error('Error details:', {
-          name: error.name,
-          message: error.message,
-          code: error.code
+        // Configurar volumen
+        audio.volume = 1.0;
+        
+        // Para iOS: asegurar que el audio se carga antes de reproducir
+        audio.load();
+        
+        // Esperar a que el audio esté listo (especialmente importante para iOS)
+        await new Promise((resolve, reject) => {
+          if (audio.readyState >= 2) {
+            // HAVE_CURRENT_DATA o superior
+            resolve();
+          } else {
+            const timeout = setTimeout(() => {
+              reject(new Error('Timeout esperando audio'));
+            }, 5000);
+            
+            audio.addEventListener('canplaythrough', () => {
+              clearTimeout(timeout);
+              resolve();
+            }, { once: true });
+            
+            audio.addEventListener('error', (error) => {
+              clearTimeout(timeout);
+              reject(error);
+            }, { once: true });
+          }
         });
         
-        // Si falla, intentar de nuevo después de un pequeño delay
-        setTimeout(async () => {
-          try {
-            const playPromise = audio.play();
-            if (playPromise !== undefined) {
-              await playPromise;
-            }
-            setAudio(audio);
-            audio.onended = () => {
-              onMessagePlayed();
-            };
-          } catch (retryError) {
-            console.error('Error en segundo intento de reproducir audio:', retryError);
-            // Aún así, continuar con la animación aunque el audio no se reproduzca
-            setAudio(audio);
-            // Simular que el audio terminó para avanzar (usar duración real si está disponible)
-            const estimatedDuration = audio.duration || 3;
-            setTimeout(() => {
-              onMessagePlayed();
-            }, estimatedDuration * 1000);
+        // Intentar reproducir el audio
+        try {
+          const playPromise = audio.play();
+          
+          // Manejar la promesa de play
+          if (playPromise !== undefined) {
+            await playPromise;
           }
-        }, 200);
+          
+          setAudio(audio);
+          audio.onended = () => {
+            if (audioBlob) URL.revokeObjectURL(audioUrl); // Limpiar Blob URL solo si es Blob
+            onMessagePlayed();
+          };
+          
+          // Manejar errores durante la reproducción
+          audio.onerror = (error) => {
+            console.error('Error en audio durante reproducción:', error);
+            if (audioBlob) URL.revokeObjectURL(audioUrl); // Limpiar Blob URL solo si es Blob
+          };
+          
+        } catch (error) {
+          console.error('Error reproduciendo audio:', error);
+          console.error('Error details:', {
+            name: error.name,
+            message: error.message,
+            code: error.code
+          });
+          if (audioBlob) URL.revokeObjectURL(audioUrl); // Limpiar Blob URL en caso de error
+          
+          // Si falla, intentar de nuevo después de un pequeño delay
+          setTimeout(async () => {
+            try {
+              // Recrear el Blob URL o usar data URI
+              const retryAudioUrl = audioBlob 
+                ? URL.createObjectURL(audioBlob)
+                : "data:audio/mp3;base64," + message.audio;
+              
+              const retryAudio = new Audio(retryAudioUrl);
+              retryAudio.setAttribute('playsinline', 'true');
+              retryAudio.setAttribute('webkit-playsinline', 'true');
+              retryAudio.volume = 1.0;
+              retryAudio.load();
+              
+              // Esperar a que esté listo
+              await new Promise((resolve) => {
+                if (retryAudio.readyState >= 2) {
+                  resolve();
+                } else {
+                  retryAudio.addEventListener('canplaythrough', () => resolve(), { once: true });
+                  retryAudio.addEventListener('error', () => resolve(), { once: true });
+                }
+              });
+              
+              const playPromise = retryAudio.play();
+              if (playPromise !== undefined) {
+                await playPromise;
+              }
+              setAudio(retryAudio);
+              retryAudio.onended = () => {
+                if (audioBlob) URL.revokeObjectURL(retryAudioUrl);
+                onMessagePlayed();
+              };
+            } catch (retryError) {
+              console.error('Error en segundo intento de reproducir audio:', retryError);
+              // Aún así, continuar con la animación aunque el audio no se reproduzca
+              setAudio(audio);
+              // Simular que el audio terminó para avanzar (usar duración real si está disponible)
+              const estimatedDuration = audio.duration || 3;
+              setTimeout(() => {
+                onMessagePlayed();
+              }, estimatedDuration * 1000);
+            }
+          }, 300);
+        }
+      } catch (error) {
+        console.error('Error creando audio:', error);
+        // Fallback: intentar con data URI directamente
+        try {
+          const fallbackAudio = new Audio("data:audio/mp3;base64," + message.audio);
+          fallbackAudio.setAttribute('playsinline', 'true');
+          fallbackAudio.setAttribute('webkit-playsinline', 'true');
+          fallbackAudio.volume = 1.0;
+          fallbackAudio.load();
+          
+          await new Promise((resolve) => {
+            if (fallbackAudio.readyState >= 2) {
+              resolve();
+            } else {
+              fallbackAudio.addEventListener('canplaythrough', () => resolve(), { once: true });
+              fallbackAudio.addEventListener('error', () => resolve(), { once: true });
+            }
+          });
+          
+          await fallbackAudio.play();
+          setAudio(fallbackAudio);
+          fallbackAudio.onended = onMessagePlayed;
+        } catch (fallbackError) {
+          console.error('Error en fallback de audio:', fallbackError);
+          // Continuar sin audio
+          setTimeout(() => {
+            onMessagePlayed();
+          }, 3000);
+        }
       }
     };
     
