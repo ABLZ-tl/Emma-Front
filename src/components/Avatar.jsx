@@ -289,11 +289,20 @@ export function Avatar(props) {
           currentAudioRef.current = audio; // Guardar referencia
           
           audio.onended = () => {
+            console.log('🎵 Audio terminado, limpiando referencias...');
             if (audioBlob) URL.revokeObjectURL(audioUrl); // Limpiar Blob URL solo si es Blob
+            
+            // Limpiar referencias ANTES de avanzar
             currentAudioRef.current = null;
             isPlayingRef.current = false;
-            processingMessageRef.current = null; // Limpiar referencia del mensaje procesado
-            onMessagePlayed(); // Esto activará el siguiente mensaje
+            processingMessageRef.current = null;
+            
+            // Pequeño delay para asegurar que las referencias se limpien
+            setTimeout(() => {
+              // Avanzar al siguiente mensaje
+              console.log('➡️ Avanzando al siguiente mensaje...');
+              onMessagePlayed();
+            }, 100);
           };
           
           // Manejar errores durante la reproducción
@@ -303,7 +312,12 @@ export function Avatar(props) {
             currentAudioRef.current = null;
             isPlayingRef.current = false;
             processingMessageRef.current = null; // Limpiar referencia del mensaje procesado
-            onMessagePlayed(); // Avanzar al siguiente mensaje aunque haya error
+            
+            // Avanzar al siguiente mensaje aunque haya error
+            setTimeout(() => {
+              console.log('➡️ Avanzando al siguiente mensaje (error)...');
+              onMessagePlayed();
+            }, 100);
           };
           
         } catch (error) {
@@ -346,11 +360,15 @@ export function Avatar(props) {
               setAudio(retryAudio);
               currentAudioRef.current = retryAudio; // Guardar referencia
               retryAudio.onended = () => {
+                console.log('🎵 Audio retry terminado, limpiando referencias...');
                 if (audioBlob) URL.revokeObjectURL(retryAudioUrl);
                 currentAudioRef.current = null;
                 isPlayingRef.current = false;
                 processingMessageRef.current = null;
-                onMessagePlayed();
+                setTimeout(() => {
+                  console.log('➡️ Avanzando al siguiente mensaje (retry)...');
+                  onMessagePlayed();
+                }, 100);
               };
             } catch (retryError) {
               console.error('Error en segundo intento de reproducir audio:', retryError);
@@ -362,6 +380,8 @@ export function Avatar(props) {
               // Simular que el audio terminó para avanzar (usar duración real si está disponible)
               const estimatedDuration = audio.duration || 3;
               setTimeout(() => {
+                console.log('➡️ Avanzando al siguiente mensaje (timeout)...');
+                processingMessageRef.current = null;
                 onMessagePlayed();
               }, estimatedDuration * 1000);
             }
@@ -390,10 +410,14 @@ export function Avatar(props) {
           setAudio(fallbackAudio);
           currentAudioRef.current = fallbackAudio; // Guardar referencia
           fallbackAudio.onended = () => {
+            console.log('🎵 Audio fallback terminado, limpiando referencias...');
             currentAudioRef.current = null;
             isPlayingRef.current = false;
             processingMessageRef.current = null;
-            onMessagePlayed();
+            setTimeout(() => {
+              console.log('➡️ Avanzando al siguiente mensaje (fallback)...');
+              onMessagePlayed();
+            }, 100);
           };
         } catch (fallbackError) {
           console.error('Error en fallback de audio:', fallbackError);
@@ -402,6 +426,8 @@ export function Avatar(props) {
           processingMessageRef.current = null;
           // Continuar sin audio
           setTimeout(() => {
+            console.log('➡️ Avanzando al siguiente mensaje (sin audio)...');
+            processingMessageRef.current = null;
             onMessagePlayed();
           }, 3000);
         }

@@ -117,7 +117,14 @@ export const ChatProvider = ({ children }) => {
   const [showHistory, setShowHistory] = useState(false);
   
   const onMessagePlayed = () => {
-    setMessages((messages) => messages.slice(1));
+    setMessages((messages) => {
+      if (messages.length > 0) {
+        const remaining = messages.slice(1);
+        console.log(`Mensaje procesado. Mensajes restantes: ${remaining.length}`);
+        return remaining;
+      }
+      return messages;
+    });
   };
   
   const loadHistory = async () => {
@@ -134,7 +141,9 @@ export const ChatProvider = ({ children }) => {
 
   useEffect(() => {
     if (messages.length > 0) {
-      setMessage(messages[0]);
+      const nextMessage = messages[0];
+      console.log(`Actualizando mensaje actual: ${messages.length} mensajes en cola`);
+      setMessage(nextMessage);
     } else {
       setMessage(null);
     }
