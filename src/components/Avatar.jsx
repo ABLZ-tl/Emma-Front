@@ -142,27 +142,29 @@ export function Avatar(props) {
   }, [scene]);
 
   // Función para inicializar el contexto de audio (necesario para iOS)
+  // NO bloquear - solo verificar si ya está inicializado
   const initializeAudioContext = async () => {
-    if (audioContextInitialized) {
+    // Si ya está inicializado globalmente, no hacer nada
+    if (window.audioContextInitialized || audioContextInitialized) {
       return true;
     }
     
-    // Crear un audio silencioso para activar el contexto de audio en iOS
-    const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
-    silentAudio.volume = 0.01; // Muy bajo pero no cero (iOS a veces ignora volumen 0)
-    silentAudio.setAttribute('playsinline', 'true');
-    silentAudio.setAttribute('webkit-playsinline', 'true');
-    
+    // Si no está inicializado, intentar inicializar (pero no bloquear)
     try {
+      const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
+      silentAudio.volume = 0.01;
+      silentAudio.setAttribute('playsinline', 'true');
+      silentAudio.setAttribute('webkit-playsinline', 'true');
+      
       await silentAudio.play();
-      // Pausar inmediatamente después de iniciar
       silentAudio.pause();
       silentAudio.currentTime = 0;
       audioContextInitialized = true;
       return true;
     } catch (e) {
       console.warn('No se pudo inicializar el contexto de audio:', e);
-      return false;
+      // Continuar de todos modos
+      return true; // Retornar true para no bloquear la reproducción
     }
   };
 

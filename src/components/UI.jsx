@@ -20,35 +20,41 @@ export const UI = ({ hidden, arMode, setArMode, ...props }) => {
   const [audioStream, setAudioStream] = useState(null);
 
   // Inicializar contexto de audio en la primera interacción (importante para iOS)
-  const initializeAudioOnFirstInteraction = async () => {
+  // NO bloquear - hacer de forma asíncrona en background
+  const initializeAudioOnFirstInteraction = () => {
     if (!window.audioContextInitialized) {
-      try {
-        // Crear un audio silencioso para activar el contexto
-        const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
-        silentAudio.volume = 0.01;
-        silentAudio.setAttribute('playsinline', 'true');
-        silentAudio.setAttribute('webkit-playsinline', 'true');
-        
-        // Intentar reproducir y pausar inmediatamente
-        await silentAudio.play();
-        silentAudio.pause();
-        silentAudio.currentTime = 0;
-        
-        window.audioContextInitialized = true;
-        console.log('Contexto de audio inicializado para iOS');
-      } catch (error) {
-        console.warn('No se pudo inicializar contexto de audio:', error);
-        // Marcar como inicializado de todos modos para evitar reintentos infinitos
-        window.audioContextInitialized = true;
-      }
+      // Marcar inmediatamente para evitar múltiples intentos
+      window.audioContextInitialized = true;
+      
+      // Inicializar en background sin bloquear
+      (async () => {
+        try {
+          // Crear un audio silencioso para activar el contexto
+          const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
+          silentAudio.volume = 0.01;
+          silentAudio.setAttribute('playsinline', 'true');
+          silentAudio.setAttribute('webkit-playsinline', 'true');
+          
+          // Intentar reproducir y pausar inmediatamente
+          await silentAudio.play();
+          silentAudio.pause();
+          silentAudio.currentTime = 0;
+          
+          console.log('Contexto de audio inicializado para iOS');
+        } catch (error) {
+          console.warn('No se pudo inicializar contexto de audio:', error);
+          // No importa si falla, continuar de todos modos
+        }
+      })();
     }
   };
 
   const sendMessage = async (text) => {
     if (!loading && !message && text) {
-      // Inicializar audio en la primera interacción (importante para iOS)
-      await initializeAudioOnFirstInteraction();
+      // Inicializar audio en la primera interacción (NO bloquear - hacer en background)
+      initializeAudioOnFirstInteraction();
       
+      // No esperar a la inicialización - continuar inmediatamente
       await chat(text);
       if (input.current) {
         input.current.value = "";
@@ -68,10 +74,10 @@ export const UI = ({ hidden, arMode, setArMode, ...props }) => {
       // Detener grabación
       stopRecording();
     } else {
-      // Inicializar audio en la primera interacción (importante para iOS)
-      await initializeAudioOnFirstInteraction();
+      // Inicializar audio en la primera interacción (NO bloquear - hacer en background)
+      initializeAudioOnFirstInteraction();
       
-      // Iniciar grabación
+      // No esperar - iniciar grabación inmediatamente
       await startRecording();
     }
   };
