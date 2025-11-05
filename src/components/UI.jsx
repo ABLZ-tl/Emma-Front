@@ -1,5 +1,16 @@
 import { useRef, useState, useEffect } from "react";
 import { useChat } from "../hooks/useChat";
+import { APP_VERSION as BASE_VERSION } from "../utils/version";
+
+// Versión que se actualiza en cada hot reload en desarrollo
+const getVersion = () => {
+  if (import.meta.env.DEV) {
+    // En desarrollo, genera una versión única en cada render
+    // Esto asegura que cambie con cada hot reload
+    return `dev-${Date.now().toString(36).slice(-6)}`;
+  }
+  return BASE_VERSION;
+};
 
 export const UI = ({ hidden, arMode, setArMode, ...props }) => {
   const input = useRef();
@@ -18,6 +29,16 @@ export const UI = ({ hidden, arMode, setArMode, ...props }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [audioStream, setAudioStream] = useState(null);
+  
+  // Versión que se actualiza en cada render en desarrollo
+  const [appVersion, setAppVersion] = useState(getVersion());
+  
+  // En desarrollo, actualizar versión cuando hay cambios (hot reload)
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      setAppVersion(getVersion());
+    }
+  });
 
   // Inicializar contexto de audio en la primera interacción (importante para iOS)
   // NO bloquear - hacer de forma asíncrona en background
@@ -405,6 +426,13 @@ export const UI = ({ hidden, arMode, setArMode, ...props }) => {
             </div>
           </div>
         )}
+      </div>
+      
+      {/* Indicador de versión - muy pequeño y discreto */}
+      <div className="fixed bottom-2 left-2 z-50 pointer-events-none">
+        <div className="bg-black/30 backdrop-blur-sm text-white/60 text-[9px] px-1.5 py-0.5 rounded font-mono opacity-60 hover:opacity-100 transition-opacity">
+          {appVersion}
+        </div>
       </div>
     </>
   );
