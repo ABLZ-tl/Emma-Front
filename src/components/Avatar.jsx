@@ -329,65 +329,99 @@ export function Avatar(props) {
           setAudio(audio);
           currentAudioRef.current = audio; // Guardar referencia
           
+          // Guardar referencias en el closure para limpiarlas después
+          const audioUrlToCleanup = audioUrl;
+          const audioBlobToCleanup = audioBlob;
+          
           audio.onended = () => {
             console.log('🎵 Audio terminado, limpiando referencias...');
             console.log(`✅ Mensaje completado: ${messageId.substring(0, 30)}...`);
             
-            // Limpiar referencias ANTES de avanzar
-            currentAudioRef.current = null;
-            isPlayingRef.current = false;
-            processingMessageRef.current = null; // Limpiar ID del mensaje procesado
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
             
-            // NO revocar Blob URL inmediatamente en mobile (puede causar problemas)
-            // Esperar un poco más antes de limpiar para evitar cortes
-            const cleanupDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 500 : 200;
+            // Guardar referencia al audio antes de limpiar (para verificación posterior)
+            const audioElement = currentAudioRef.current;
+            
+            // NO limpiar referencias inmediatamente - esperar a asegurar que el audio terminó completamente
+            // Aumentar delays significativamente para evitar que se corten los audios, especialmente el último
+            // El modelo eleven_v3 tarda más en generar, así que necesitamos más tiempo antes de limpiar
+            const cleanupDelay = isMobile ? 2000 : 1000; // Delay mucho más largo para asegurar que termine completamente
+            const advanceDelay = isMobile ? 800 : 400; // Delay más largo antes de avanzar
             
             setTimeout(() => {
-              // Limpiar Blob URL después de un delay en mobile
-              if (audioBlob) {
-                try {
-                  URL.revokeObjectURL(audioUrl);
-                } catch (e) {
-                  console.warn('Error revocando Blob URL:', e);
-                }
+              // Limpiar referencias DESPUÉS de asegurar que el audio terminó completamente
+              // Esperar más tiempo para asegurar que el audio realmente terminó
+              currentAudioRef.current = null;
+              isPlayingRef.current = false;
+              processingMessageRef.current = null;
+              
+              // Limpiar Blob URL después de un delay MUCHO más largo para evitar cortes
+              // NO limpiar inmediatamente para evitar que se corte el audio, especialmente el último
+              // El delay es largo para asegurar que el audio realmente terminó completamente
+              if (audioBlobToCleanup) {
+                setTimeout(() => {
+                  try {
+                    // Verificar que el audio realmente terminó antes de revocar
+                    // El audio debería estar ended cuando onended se dispara, pero verificamos por seguridad
+                    if (!audioElement || audioElement.ended || audioElement.readyState >= 2) {
+                      URL.revokeObjectURL(audioUrlToCleanup);
+                      console.log('🗑️ Blob URL revocado después de delay seguro');
+                    } else {
+                      console.log('⏳ Audio aún activo, esperando más tiempo antes de limpiar...');
+                      // Esperar un poco más si el audio aún está activo
+                      setTimeout(() => {
+                        try {
+                          URL.revokeObjectURL(audioUrlToCleanup);
+                          console.log('🗑️ Blob URL revocado después de delay adicional');
+                        } catch (e) {
+                          console.warn('Error revocando Blob URL:', e);
+                        }
+                      }, 1000);
+                    }
+                  } catch (e) {
+                    console.warn('Error revocando Blob URL:', e);
+                  }
+                }, cleanupDelay);
               }
-            }, cleanupDelay);
-            
-            // Delay más largo en mobile para asegurar que el audio terminó completamente
-            const advanceDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 300 : 100;
-            setTimeout(() => {
-              // Avanzar al siguiente mensaje
-              console.log('➡️ Avanzando al siguiente mensaje...');
-              setAudioCompleted(prev => prev + 1); // Forzar re-render
-              onMessagePlayed();
-            }, advanceDelay);
+              
+              // Avanzar al siguiente mensaje después de un delay adicional más largo
+              setTimeout(() => {
+                console.log('➡️ Avanzando al siguiente mensaje...');
+                setAudioCompleted(prev => prev + 1); // Forzar re-render
+                onMessagePlayed();
+              }, advanceDelay);
+            }, 300); // Delay inicial más largo para asegurar que onended se procesó completamente
           };
           
           // Manejar errores durante la reproducción
           audio.onerror = (error) => {
             console.error('❌ Error en audio durante reproducción:', error);
             console.error(`Mensaje fallido: ${messageId.substring(0, 30)}...`);
-            currentAudioRef.current = null;
-            isPlayingRef.current = false;
-            processingMessageRef.current = null; // Limpiar ID del mensaje procesado
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            const cleanupDelay = isMobile ? 2000 : 1000;
+            const advanceDelay = isMobile ? 800 : 400;
             
-            const cleanupDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 500 : 200;
             setTimeout(() => {
-              if (audioBlob) {
-                try {
-                  URL.revokeObjectURL(audioUrl);
-                } catch (e) {
-                  console.warn('Error revocando Blob URL (error):', e);
+              currentAudioRef.current = null;
+              isPlayingRef.current = false;
+              processingMessageRef.current = null;
+              
+              setTimeout(() => {
+                if (audioBlob) {
+                  try {
+                    URL.revokeObjectURL(audioUrl);
+                  } catch (e) {
+                    console.warn('Error revocando Blob URL (error):', e);
+                  }
                 }
-              }
-            }, cleanupDelay);
-            
-            const advanceDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 300 : 100;
-            setTimeout(() => {
-              console.log('➡️ Avanzando al siguiente mensaje (error)...');
-              setAudioCompleted(prev => prev + 1);
-              onMessagePlayed();
-            }, advanceDelay);
+              }, cleanupDelay);
+              
+              setTimeout(() => {
+                console.log('➡️ Avanzando al siguiente mensaje (error)...');
+                setAudioCompleted(prev => prev + 1);
+                onMessagePlayed();
+              }, advanceDelay);
+            }, 300);
           };
           
         } catch (error) {
@@ -431,27 +465,31 @@ export function Avatar(props) {
               currentAudioRef.current = retryAudio; // Guardar referencia
               retryAudio.onended = () => {
                 console.log('🎵 Audio retry terminado, limpiando referencias...');
-                currentAudioRef.current = null;
-                isPlayingRef.current = false;
-                processingMessageRef.current = null;
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                const cleanupDelay = isMobile ? 2000 : 1000;
+                const advanceDelay = isMobile ? 800 : 400;
                 
-                const cleanupDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 500 : 200;
                 setTimeout(() => {
-                  if (audioBlob) {
-                    try {
-                      URL.revokeObjectURL(retryAudioUrl);
-                    } catch (e) {
-                      console.warn('Error revocando Blob URL (retry):', e);
+                  currentAudioRef.current = null;
+                  isPlayingRef.current = false;
+                  processingMessageRef.current = null;
+                  
+                  setTimeout(() => {
+                    if (audioBlob) {
+                      try {
+                        URL.revokeObjectURL(retryAudioUrl);
+                      } catch (e) {
+                        console.warn('Error revocando Blob URL (retry):', e);
+                      }
                     }
-                  }
-                }, cleanupDelay);
-                
-                const advanceDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 300 : 100;
-                setTimeout(() => {
-                  console.log('➡️ Avanzando al siguiente mensaje (retry)...');
-                  setAudioCompleted(prev => prev + 1);
-                  onMessagePlayed();
-                }, advanceDelay);
+                  }, cleanupDelay);
+                  
+                  setTimeout(() => {
+                    console.log('➡️ Avanzando al siguiente mensaje (retry)...');
+                    setAudioCompleted(prev => prev + 1);
+                    onMessagePlayed();
+                  }, advanceDelay);
+                }, 300);
               };
             } catch (retryError) {
               console.error('Error en segundo intento de reproducir audio:', retryError);
@@ -495,16 +533,20 @@ export function Avatar(props) {
           currentAudioRef.current = fallbackAudio; // Guardar referencia
           fallbackAudio.onended = () => {
             console.log('🎵 Audio fallback terminado, limpiando referencias...');
-            currentAudioRef.current = null;
-            isPlayingRef.current = false;
-            processingMessageRef.current = null;
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            const advanceDelay = isMobile ? 800 : 400;
             
-            const advanceDelay = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 300 : 100;
             setTimeout(() => {
-              console.log('➡️ Avanzando al siguiente mensaje (fallback)...');
-              setAudioCompleted(prev => prev + 1);
-              onMessagePlayed();
-            }, advanceDelay);
+              currentAudioRef.current = null;
+              isPlayingRef.current = false;
+              processingMessageRef.current = null;
+              
+              setTimeout(() => {
+                console.log('➡️ Avanzando al siguiente mensaje (fallback)...');
+                setAudioCompleted(prev => prev + 1);
+                onMessagePlayed();
+              }, advanceDelay);
+            }, 300);
           };
         } catch (fallbackError) {
           console.error('Error en fallback de audio:', fallbackError);
