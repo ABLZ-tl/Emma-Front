@@ -120,6 +120,7 @@ export const ChatProvider = ({ children }) => {
     setMessages((messages) => {
       if (messages.length > 0) {
         const remaining = messages.slice(1);
+        // Ahora siempre habrá 0 mensajes restantes ya que el backend solo devuelve un mensaje
         console.log(`Mensaje procesado. Mensajes restantes: ${remaining.length}`);
         return remaining;
       }
@@ -142,7 +143,8 @@ export const ChatProvider = ({ children }) => {
   useEffect(() => {
     if (messages.length > 0) {
       const nextMessage = messages[0];
-      console.log(`Actualizando mensaje actual: ${messages.length} mensajes en cola`);
+      // Ahora siempre habrá 1 mensaje en cola (el backend solo devuelve un mensaje)
+      console.log(`Actualizando mensaje actual: ${messages.length} mensaje(s) en cola`);
       setMessage(nextMessage);
     } else {
       setMessage(null);
